@@ -1,6 +1,6 @@
 [package]
 name = "singleton-registry"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["Dominik Jelinek <dominik.jelinek111@gmail.com>"]
 description = "A synchronous, thread-safe singleton registry for global type-based storage and retrieval"
