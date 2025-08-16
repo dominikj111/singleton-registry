@@ -3,14 +3,15 @@
 A **thread-safe singleton registry** for Rust.  
 Store and retrieve **any type** globally - structs, primitives, functions, or closures.  
 Each type can have only **one instance** registered at a time (true singleton pattern).  
-Designed for write-once, read-many pattern with zero-cost abstractions.
+Designed for write-once, read-many pattern with minimal overhead.
 
 ## Features
 
+- **Synchronous**: No async/await complexity - simple, direct API calls
 - **Thread-safe**: All operations are safe to use across multiple threads
 - **Type-safe**: Values are stored and retrieved with full type information
 - **True singleton**: Only one instance per type - later registrations override previous ones
-- **Zero-cost abstractions**: Minimal runtime overhead
+- **Minimal overhead**: Efficient Arc-based storage with fast lookups
 - **Tracing support**: Optional callback system for monitoring registry operations
 - **No external dependencies**: Pure Rust implementation
 
@@ -75,10 +76,10 @@ set_trace_callback(|event| {
 ## Use Cases
 
 - **Application singletons** (Config, Logger, DatabasePool, etc.)
-- **Global variables** and constants shared across modules
+- **Global state** and constants shared across modules
 - **Function helpers** and utility closures accessible anywhere
-- **Service location** for shared components
-- **Cross-cutting concerns** shared across modules
+- **Shared resources** and components
+- **Cross-cutting concerns** accessible throughout your application
 
 ## Design Philosophy
 

@@ -3,13 +3,20 @@ name = "singleton-registry"
 version = "1.0.0"
 edition = "2021"
 authors = ["Dominik Jelinek <dominik.jelinek111@gmail.com>"]
-description = "A thread-safe dependency injection registry for storing and retrieving global instances by type"
+description = "A synchronous, thread-safe singleton registry for global type-based storage and retrieval"
 license = "BSD-3-Clause"
 repository = "https://github.com/dominikj111/singleton-registry"
 homepage = "https://github.com/dominikj111/singleton-registry"
 documentation = "https://docs.rs/singleton-registry"
 readme = "README.md"
-keywords = ["singleton", "registry", "dependency-injection", "global", "thread-safe"]
+keywords = [
+    "synchronous",
+    "thread-safe",
+    "singleton",
+    "type-based",
+    "registry",
+    "global",
+]
 categories = ["data-structures", "concurrency"]
 
 [dependencies]
