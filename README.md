@@ -86,9 +86,20 @@ set_trace_callback(|event| {
 - **Simple**: Clean API without complex macros or derive attributes
 - **Safe**: Values stored in `Arc<T>` with full type checking
 - **Global**: One central registry shared across the entire program
+- **Process-wide**: The registry is shared across all crates in the same process
 - **Singleton**: Each type can only have one registered instance - true singleton behavior
 - **Override-friendly**: Later registrations replace previous ones for the same type
 - **Efficient**: Write-once, read-many pattern optimized for performance
+
+## Important Notes
+
+### Process-wide Sharing
+
+This registry is implemented as a global static variable, meaning it's shared across all crates in the same process. Any crate that depends on `singleton-registry` will access the same registry instance.
+
+### Context Resolution
+
+Currently, the registry operates in a single global context. If you need request-scoped or context-aware resolution, please open an issue to discuss your use case. I'm considering adding support for scoped registries in future versions.
 
 ## Installation
 
