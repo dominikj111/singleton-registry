@@ -1,45 +1,50 @@
 //! # Singleton Registry
 //!
-//! A thread-safe dependency injection registry for storing and retrieving global instances.
-//! Currently designed for write-once, read-many pattern.
-//!
-//! This crate provides a type-safe way to register and retrieve instances of any type
-//! that implements `Send + Sync + 'static`.
+//! A thread-safe singleton registry for Rust.
+//! Store and retrieve **any type** globally - structs, primitives, functions, or closures.
+//! Each type can have only **one instance** registered at a time (true singleton pattern).
+//! Designed for write-once, read-many pattern with minimal overhead.
 //!
 //! ## Quick Start
 //!
 //! ```rust
-//! use singleton_registry::{register, get};
+//! use singleton_registry::define_registry;
 //! use std::sync::Arc;
 //!
+//! // Create a registry using the macro
+//! define_registry!(global);
+//!
 //! // Register a value
-//! register("Hello, World!".to_string());
+//! global::register("Hello, World!".to_string());
 //!
 //! // Retrieve the value
-//! let message: Arc<String> = get().unwrap();
+//! let message: Arc<String> = global::get().unwrap();
 //! assert_eq!(&*message, "Hello, World!");
 //! ```
 //!
 //! ## Features
 //!
+//! - **Synchronous**: No async/await complexity - simple, direct API calls
 //! - **Thread-safe**: All operations are safe to use across multiple threads
 //! - **Type-safe**: Values are stored and retrieved with full type information
-//! - **Zero-cost abstractions**: Minimal runtime overhead
+//! - **True singleton**: Only one instance per type - later registrations override previous ones
+//! - **Minimal overhead**: Efficient Arc-based storage with fast lookups
 //! - **Tracing support**: Optional callback system for monitoring registry operations
+//! - **No external dependencies**: Pure Rust implementation
 //!
-//! ## Main Functions
+//! ## Main API
 //!
-//! - [`register`] - Register a value in the global registry
-//! - [`register_arc`] - Register an Arc-wrapped value (more efficient if you already have an Arc)
-//! - [`get`] - Retrieve a value as Arc<T>
-//! - [`get_cloned`] - Retrieve a cloned value (requires Clone)
-//! - [`contains`] - Check if a type is registered
-//! - [`set_trace_callback`] - Set up tracing for registry operations
+//! - [`define_registry!`] - Macro to create a new registry
+//! - [`RegistryApi`] - Trait implemented by all registries
+//! - [`RegistryEvent`] - Events emitted during registry operations
 
-mod registry;
+mod macros;
+mod registry_event;
+mod registry_trait;
 
-// Re-export the main public API
-pub use registry::{
-    clear_trace_callback, contains, get, get_cloned, register, register_arc, set_trace_callback,
-    RegistryEvent, TraceCallback,
-};
+// Re-export the public API
+pub use registry_event::RegistryEvent;
+pub use registry_trait::RegistryApi;
+
+// Macros are exported via #[macro_export] in macros.rs
+// They are automatically available at crate root
