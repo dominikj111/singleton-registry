@@ -1,69 +1,34 @@
+#![allow(dead_code)]
+
 //! Macros for creating singleton registries.
 //!
 //! This module provides a simple macro-based approach to create type-safe,
 //! thread-safe singleton registries with zero external dependencies.
 
-/// Creates a complete singleton registry with a single macro invocation.
+/// Creates a singleton registry module with ergonomic free functions.
 ///
-/// The macro generates a module containing:
-/// - Storage static (hidden)
-/// - Trace callback static (hidden)
-/// - An `Api` struct that implements `RegistryApi`
+/// The macro generates a module containing storage, tracing infrastructure,
+/// and a private `Api` struct implementing `RegistryApi`.
 ///
-/// # Examples
+/// # Example
 ///
 /// ```rust
 /// use singleton_registry::define_registry;
 /// use std::sync::Arc;
 ///
-/// // Create a global registry
+/// // Create registries - each is isolated
 /// define_registry!(global);
+/// define_registry!(cache);
 ///
-/// // Register values (ergonomic free functions)
+/// // Register and retrieve values
 /// global::register(42i32);
-/// global::register("Hello".to_string());
+/// cache::register("redis".to_string());
 ///
-/// // Retrieve values
 /// let num: Arc<i32> = global::get().unwrap();
-/// let msg: Arc<String> = global::get().unwrap();
+/// let msg: Arc<String> = cache::get().unwrap();
 ///
 /// assert_eq!(*num, 42);
-/// assert_eq!(&**msg, "Hello");
-/// ```
-///
-/// # Multiple Registries
-///
-/// You can create multiple isolated registries:
-///
-/// ```rust
-/// use singleton_registry::define_registry;
-///
-/// define_registry!(database);
-/// define_registry!(cache);
-/// define_registry!(config);
-///
-/// // Each registry is completely isolated
-/// database::register("db_connection".to_string());
-/// cache::register("redis_connection".to_string());
-///
-/// // No interference between registries
-/// assert!(database::get::<String>().is_ok());
-/// assert!(cache::get::<String>().is_ok());
-/// ```
-///
-/// # Trait-Based Usage
-///
-/// If you need trait-based usage, the `API` constant is available:
-///
-/// ```rust
-/// use singleton_registry::{define_registry, RegistryApi};
-/// use std::sync::Arc;
-///
-/// define_registry!(app);
-///
-/// // Use API constant for trait-based access
-/// app::API.register(100i32);
-/// let value: Arc<i32> = app::API.get().unwrap();
+/// assert_eq!(&**msg, "redis");
 /// ```
 #[macro_export]
 macro_rules! define_registry {
@@ -78,8 +43,9 @@ macro_rules! define_registry {
                 LazyLock::new(|| Mutex::new(HashMap::new()));
 
             // Trace callback storage (module-private)
-            static TRACE: LazyLock<Mutex<Option<Arc<dyn Fn(&$crate::RegistryEvent) + Send + Sync>>>> =
-                LazyLock::new(|| Mutex::new(None));
+            // Note: This type matches TraceCallback in registry_trait.rs - keep in sync
+            type TraceCallback = LazyLock<Mutex<Option<Arc<dyn Fn(&$crate::RegistryEvent) + Send + Sync>>>>;
+            static TRACE: TraceCallback = LazyLock::new(|| Mutex::new(None));
 
             /// Zero-sized type that implements the registry API.
             ///
@@ -92,7 +58,7 @@ macro_rules! define_registry {
                     &STORAGE
                 }
 
-                fn trace() -> &'static LazyLock<Mutex<Option<Arc<dyn Fn(&$crate::RegistryEvent) + Send + Sync>>>> {
+                fn trace() -> &'static TraceCallback {
                     &TRACE
                 }
 
@@ -207,5 +173,22 @@ mod tests {
         assert!(recorded[0].contains("register"));
         assert!(recorded[1].contains("get"));
         assert!(recorded[2].contains("contains"));
+    }
+
+    #[test]
+    fn test_additional_functions() {
+        define_registry!(extra_test);
+
+        // Test register_arc
+        let val = Arc::new(99i32);
+        extra_test::register_arc(val);
+
+        // Test get_cloned
+        let cloned: i32 = extra_test::get_cloned().unwrap();
+        assert_eq!(cloned, 99);
+
+        // Test clear_trace_callback
+        extra_test::set_trace_callback(|_| {});
+        extra_test::clear_trace_callback(); // Just verify it doesn't panic
     }
 }

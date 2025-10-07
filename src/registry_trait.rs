@@ -1,7 +1,10 @@
-//! Registry trait and event types for the singleton registry.
+//! Core trait defining registry behavior.
 //!
-//! This module defines the core trait that all macro-generated registries implement,
-//! as well as the event types used for tracing registry operations.
+//! This module provides the `RegistryApi` trait with default implementations for
+//! type-safe registration, retrieval, and tracing of singleton instances.
+//!
+//! The registry is type-based: each type (`TypeId`) can have exactly one instance stored.
+//! Registering a value of the same type will replace the previous instance.
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -9,72 +12,81 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use crate::RegistryEvent;
 
+/// Type alias for the trace callback storage.
+///
+/// Note: This type is also defined in the `define_registry!` macro.
+/// Keep both definitions in sync.
+type TraceCallback = LazyLock<Mutex<Option<Arc<dyn Fn(&RegistryEvent) + Send + Sync>>>>;
+
 /// Core trait defining registry behavior.
 ///
-/// All macro-generated registries implement this trait via a zero-sized `Api` struct.
-/// The trait provides default implementations for all operations, requiring only
-/// two accessor methods to be implemented.
+/// Provides default implementations for all registry operations, requiring only
+/// two accessor methods (`storage` and `trace`) to be implemented by the implementor.
 ///
-/// ```rust
-/// use singleton_registry::define_registry;
-///
-/// define_registry!(MY_REGISTRY);
-///
-/// // Trait-based usage
-/// MY_REGISTRY::API.register(42i32);
-/// let value = MY_REGISTRY::API.get::<i32>().unwrap();
-/// ```
+/// The registry stores singleton instances indexed by their type (`TypeId`).
+/// Each type can have at most one instance stored at any given time.
 pub trait RegistryApi {
+    // -------------------------------------------------------------------------------------------------
+    // Tracing
+    // -------------------------------------------------------------------------------------------------
+
+    /// Access the trace callback static.
+    ///
+    /// This method must be implemented to provide access to the registry's trace callback.
+    fn trace() -> &'static TraceCallback;
+
+    /// Set a tracing callback for registry operations.
+    ///
+    /// The callback will be invoked for every registry operation (register, get, contains).
+    fn set_trace_callback(&self, callback: impl Fn(&RegistryEvent) + Send + Sync + 'static) {
+        let mut guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
+        *guard = Some(Arc::new(callback));
+    }
+
+    /// Clear the tracing callback.
+    ///
+    /// After calling this, no tracing events will be emitted.
+    fn clear_trace_callback(&self) {
+        let mut guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
+        *guard = None;
+    }
+
+    /// Convenience wrapper to emit a registry event using the current callback.
+    ///
+    /// If a trace callback is set, this method will invoke it with the provided event.
+    /// Lock poisoning is handled by recovering the lock and continuing execution.
+    fn emit_event(&self, event: &RegistryEvent) {
+        let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(callback) = guard.as_ref() {
+            callback(event);
+        }
+    }
+
+    // -------------------------------------------------------------------------------------------------
+    // Registry
+    // -------------------------------------------------------------------------------------------------
+
     /// Access the storage static.
     ///
     /// This method must be implemented to provide access to the registry's storage.
     fn storage() -> &'static LazyLock<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>;
 
-    /// Access the trace callback static.
-    ///
-    /// This method must be implemented to provide access to the registry's trace callback.
-    fn trace() -> &'static LazyLock<Mutex<Option<Arc<dyn Fn(&RegistryEvent) + Send + Sync>>>>;
-
     /// Register a value in the registry.
     ///
-    /// This takes ownership of the value and wraps it in an `Arc` automatically.
+    /// Takes ownership of the value and wraps it in an `Arc` automatically.
     /// If a value of the same type is already registered, it will be replaced.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use singleton_registry::{define_registry, RegistryApi};
-    /// # define_registry!(EXAMPLE);
-    /// EXAMPLE::API.register(42i32);
-    /// EXAMPLE::API.register("Hello".to_string());
-    /// ```
     fn register<T: Send + Sync + 'static>(&self, value: T) {
         self.register_arc(Arc::new(value));
     }
 
     /// Register an Arc-wrapped value in the registry.
     ///
-    /// This is more efficient than `register` when you already have an `Arc`,
+    /// More efficient than `register` when you already have an `Arc`,
     /// as it avoids creating an additional reference count.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use singleton_registry::{define_registry, RegistryApi};
-    /// # use std::sync::Arc;
-    /// # define_registry!(EXAMPLE);
-    /// let value = Arc::new(42i32);
-    /// EXAMPLE::API.register_arc(value);
-    /// ```
     fn register_arc<T: Send + Sync + 'static>(&self, value: Arc<T>) {
-        // Emit trace event
-        let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(callback) = guard.as_ref() {
-            callback(&RegistryEvent::Register {
-                type_name: std::any::type_name::<T>(),
-            });
-        }
-        drop(guard);
+        self.emit_event(&RegistryEvent::Register {
+            type_name: std::any::type_name::<T>(),
+        });
 
         // Register the value
         Self::storage()
@@ -85,32 +97,20 @@ pub trait RegistryApi {
 
     /// Retrieve a value from the registry.
     ///
-    /// Returns `Ok(Arc<T>)` if the type is found, or an error message if not found
-    /// or if there's a type mismatch.
+    /// Returns `Ok(Arc<T>)` if the type is found.
     ///
     /// # Errors
     ///
-    /// - Returns `Err` if the type `T` is not found in the registry
-    /// - Returns `Err` if there's a type mismatch (extremely rare)
-    /// - Returns `Err` if the registry lock is poisoned
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use singleton_registry::{define_registry, RegistryApi};
-    /// # use std::sync::Arc;
-    /// # define_registry!(EXAMPLE);
-    /// EXAMPLE::API.register(42i32);
-    ///
-    /// let value: Arc<i32> = EXAMPLE::API.get().unwrap();
-    /// assert_eq!(*value, 42);
-    /// ```
+    /// - Type `T` is not found in the registry
+    /// - Type mismatch (extremely rare)
+    /// - Registry lock is poisoned
     fn get<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, String> {
         let map = Self::storage()
             .lock()
             .map_err(|_| "Failed to acquire registry lock".to_string())?;
 
         let any_arc_opt = map.get(&TypeId::of::<T>()).cloned();
+
         drop(map);
 
         let result: Result<Arc<T>, String> = match any_arc_opt {
@@ -126,38 +126,23 @@ pub trait RegistryApi {
             )),
         };
 
-        // Emit trace event
-        let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(callback) = guard.as_ref() {
-            callback(&RegistryEvent::Get {
-                type_name: std::any::type_name::<T>(),
-                found: result.is_ok(),
-            });
-        }
+        self.emit_event(&RegistryEvent::Get {
+            type_name: std::any::type_name::<T>(),
+            found: result.is_ok(),
+        });
 
         result
     }
 
     /// Retrieve a cloned value from the registry.
     ///
-    /// This returns an owned value by cloning the value stored in the registry.
+    /// Returns an owned value by cloning the value stored in the registry.
     /// The type `T` must implement `Clone`.
     ///
     /// # Errors
     ///
-    /// - Returns `Err` if the type `T` is not found in the registry
-    /// - Returns `Err` if there's a type mismatch
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use singleton_registry::{define_registry, RegistryApi};
-    /// # define_registry!(EXAMPLE);
-    /// EXAMPLE::API.register("hello".to_string());
-    ///
-    /// let value: String = EXAMPLE::API.get_cloned().unwrap();
-    /// assert_eq!(value, "hello");
-    /// ```
+    /// - Type `T` is not found in the registry
+    /// - Type mismatch
     fn get_cloned<T: Send + Sync + Clone + 'static>(&self) -> Result<T, String> {
         let arc = self.get::<T>()?;
         Ok((*arc).clone())
@@ -165,75 +150,23 @@ pub trait RegistryApi {
 
     /// Check if a type is registered in the registry.
     ///
-    /// Returns `Ok(true)` if the type is registered, `Ok(false)` if not found,
-    /// or an error if the registry lock is poisoned.
+    /// Returns `Ok(true)` if the type is registered, `Ok(false)` if not found.
     ///
-    /// # Examples
+    /// # Errors
     ///
-    /// ```rust
-    /// # use singleton_registry::{define_registry, RegistryApi};
-    /// # define_registry!(EXAMPLE);
-    ///
-    /// assert!(!EXAMPLE::API.contains::<i32>().unwrap());
-    /// EXAMPLE::API.register(42i32);
-    /// assert!(EXAMPLE::API.contains::<i32>().unwrap());
-    /// ```
+    /// - Registry lock is poisoned
     fn contains<T: Send + Sync + 'static>(&self) -> Result<bool, String> {
         let found = Self::storage()
             .lock()
             .map(|m| m.contains_key(&TypeId::of::<T>()))
             .map_err(|_| "Failed to acquire registry lock".to_string())?;
 
-        // Emit trace event
-        let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(callback) = guard.as_ref() {
-            callback(&RegistryEvent::Contains {
-                type_name: std::any::type_name::<T>(),
-                found,
-            });
-        }
+        self.emit_event(&RegistryEvent::Contains {
+            type_name: std::any::type_name::<T>(),
+            found,
+        });
 
         Ok(found)
-    }
-
-    /// Set a tracing callback for registry operations.
-    ///
-    /// The callback will be invoked for every registry operation (register, get, contains).
-    /// This is useful for debugging, logging, or monitoring registry usage.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use singleton_registry::{define_registry, RegistryApi};
-    /// # define_registry!(EXAMPLE);
-    ///
-    /// EXAMPLE::API.set_trace_callback(|event| {
-    ///     println!("Registry event: {:?}", event);
-    /// });
-    ///
-    /// EXAMPLE::API.register(42i32); // Will trigger the callback
-    /// ```
-    fn set_trace_callback(&self, callback: impl Fn(&RegistryEvent) + Send + Sync + 'static) {
-        let mut guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
-        *guard = Some(Arc::new(callback));
-    }
-
-    /// Clear the tracing callback.
-    ///
-    /// After calling this, no tracing events will be emitted.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use singleton_registry::{define_registry, RegistryApi};
-    /// # define_registry!(EXAMPLE);
-    ///
-    /// EXAMPLE::API.set_trace_callback(|event| println!("{:?}", event));
-    /// EXAMPLE::API.clear_trace_callback(); // Stop tracing
-    /// ```
-    fn clear_trace_callback(&self) {
-        let mut guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
-        *guard = None;
     }
 
     #[doc(hidden)]
@@ -245,12 +178,7 @@ pub trait RegistryApi {
 
     #[doc(hidden)]
     fn clear(&self) {
-        // Emit trace event
-        let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(callback) = guard.as_ref() {
-            callback(&RegistryEvent::Clear {});
-        }
-        drop(guard);
+        self.emit_event(&RegistryEvent::Clear {});
 
         if let Ok(mut registry) = Self::storage().lock() {
             registry.clear();
@@ -264,9 +192,7 @@ pub trait RegistryApi {
 
 #[cfg(test)]
 mod tests {
-    use crate::RegistryEvent;
-
-    use super::RegistryApi;
+    use super::{RegistryApi, TraceCallback};
 
     use serial_test::serial;
     use std::any::{Any, TypeId};
@@ -276,8 +202,7 @@ mod tests {
     static STORAGE: LazyLock<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
 
-    static TRACE: LazyLock<Mutex<Option<Arc<dyn Fn(&RegistryEvent) + Send + Sync>>>> =
-        LazyLock::new(|| Mutex::new(None));
+    static TRACE: TraceCallback = LazyLock::new(|| Mutex::new(None));
 
     struct Api;
 
@@ -286,7 +211,7 @@ mod tests {
             &STORAGE
         }
 
-        fn trace() -> &'static LazyLock<Mutex<Option<Arc<dyn Fn(&RegistryEvent) + Send + Sync>>>> {
+        fn trace() -> &'static TraceCallback {
             &TRACE
         }
     }
@@ -324,7 +249,7 @@ mod tests {
         API.register(s.clone());
 
         // Retrieve it and verify
-        let retrieved: Arc<String> = API.get().expect("Failed to retrieve string");
+        let retrieved: Arc<String> = API.get().unwrap();
         assert_eq!(&*retrieved, &s);
 
         // Clear the registry after the test
@@ -367,12 +292,12 @@ mod tests {
             // Synchronize: ensure both threads have registered before retrieval
             barrier_clone.wait();
 
-            let s: Arc<String> = API.get().expect("Failed to get string in thread");
+            let s: Arc<String> = API.get().unwrap();
             assert_eq!(&*s, &main_value);
         });
 
         let thread_value = main_rx.recv().unwrap();
-        let num: Arc<u32> = API.get().expect("Failed to get u32 in main thread");
+        let num: Arc<u32> = API.get().unwrap();
         assert_eq!(*num, thread_value);
 
         // Register a string in main thread
@@ -411,13 +336,13 @@ mod tests {
         API.register(nums_val.clone());
 
         // Then retrieve and verify each one
-        let num: Arc<Num> = API.get().expect("Num not found in registry");
+        let num: Arc<Num> = API.get().unwrap();
         assert_eq!(num.0, num_val.0);
 
-        let text: Arc<Text> = API.get().expect("Text not found in registry");
+        let text: Arc<Text> = API.get().unwrap();
         assert_eq!(text.0, text_val.0);
 
-        let nums: Arc<Numbers> = API.get().expect("Numbers not found in registry");
+        let nums: Arc<Numbers> = API.get().unwrap();
         assert_eq!(&nums.0, &nums_val.0);
 
         // Clear the registry after the test
@@ -471,35 +396,35 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_di_get_cloned() {
+    fn test_get_cloned() {
         API.clear();
         API.register("hello".to_string());
-        let value: String = API.get_cloned::<String>().expect("Value should be present");
+        let value: String = API.get_cloned::<String>().unwrap();
         assert_eq!(value, "hello");
     }
 
     #[test]
     #[serial]
-    fn test_di_get_ref() {
+    fn test_get_ref() {
         API.clear();
         API.register("world".to_string());
-        let value: &'static String = API.get_ref::<String>().expect("Value should be present");
+        let value: &'static String = API.get_ref::<String>().unwrap();
         assert_eq!(value, "world");
 
         // WARNING: The following line causes undefined behavior (UB).
-        // After calling `di_clear`, the original `String` has been dropped and its memory deallocated,
+        // After calling `clear`, the original `String` has been dropped and its memory deallocated,
         // but `value` is still a reference to the old memory location. Accessing or printing `value`
         // after this point is use-after-free, which is always UB in Rust. This may cause a crash,
         // memory corruption, or appear to "work" by accident, depending on the allocator and OS.
         // This code is for demonstration purposes only—never use a leaked reference after the value is dropped!
-        // di_clear(); // value is dropped
+        // API.clear(); // value is dropped
         // let _ = value.len();
         // eprintln!("{}", value);
     }
 
     #[test]
     #[serial]
-    fn test_di_contains() {
+    fn test_contains() {
         API.clear();
         assert!(!API.contains::<u32>().unwrap());
         API.register(1u32);
@@ -522,49 +447,145 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_trace_callback_invoked() {
+    fn test_trace_callback_register_event() {
         API.clear();
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        API.set_trace_callback(|_e| {
-            COUNT.fetch_add(1, Ordering::SeqCst);
+        use std::sync::{Arc as StdArc, Mutex as StdMutex};
+        let events = StdArc::new(StdMutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        API.set_trace_callback(move |e| {
+            events_clone.lock().unwrap().push(format!("{}", e));
         });
+
         API.register(5u8);
-        assert_eq!(COUNT.load(Ordering::SeqCst), 1); // adjust after re-enabling emit
+
+        let captured = events.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0], "register { type_name: u8 }");
+
         API.clear_trace_callback();
     }
 
-    // -------------------------------------------------------------
-    // Display implementation tests
-    // -------------------------------------------------------------
-
     #[test]
-    fn test_display_register() {
-        let ev = RegistryEvent::Register { type_name: "i32" };
-        assert_eq!(ev.to_string(), "register { type_name: i32 }");
+    #[serial]
+    fn test_trace_callback_get_event() {
+        API.clear();
+        use std::sync::{Arc as StdArc, Mutex as StdMutex};
+        let events = StdArc::new(StdMutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        API.set_trace_callback(move |e| {
+            events_clone.lock().unwrap().push(format!("{}", e));
+        });
+
+        API.register(42i32);
+        let _ = API.get::<i32>();
+
+        let captured = events.lock().unwrap();
+        assert_eq!(captured.len(), 2);
+        assert_eq!(captured[0], "register { type_name: i32 }");
+        assert_eq!(captured[1], "get { type_name: i32, found: true }");
+
+        API.clear_trace_callback();
     }
 
     #[test]
-    fn test_display_get() {
-        let ev = RegistryEvent::Get {
-            type_name: "String",
-            found: true,
-        };
-        assert_eq!(ev.to_string(), "get { type_name: String, found: true }");
+    #[serial]
+    fn test_trace_callback_contains_event() {
+        API.clear();
+        use std::sync::{Arc as StdArc, Mutex as StdMutex};
+        let events = StdArc::new(StdMutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        API.set_trace_callback(move |e| {
+            events_clone.lock().unwrap().push(format!("{}", e));
+        });
+
+        let _ = API.contains::<String>();
+        API.register("test".to_string());
+        let _ = API.contains::<String>();
+
+        let captured = events.lock().unwrap();
+        assert_eq!(captured.len(), 3);
+        assert_eq!(
+            captured[0],
+            "contains { type_name: alloc::string::String, found: false }"
+        );
+        assert_eq!(captured[1], "register { type_name: alloc::string::String }");
+        assert_eq!(
+            captured[2],
+            "contains { type_name: alloc::string::String, found: true }"
+        );
+
+        API.clear_trace_callback();
     }
 
     #[test]
-    fn test_display_contains() {
-        let ev = RegistryEvent::Contains {
-            type_name: "u8",
-            found: false,
-        };
-        assert_eq!(ev.to_string(), "contains { type_name: u8, found: false }");
+    #[serial]
+    fn test_trace_callback_clear_event() {
+        API.clear();
+        use std::sync::{Arc as StdArc, Mutex as StdMutex};
+        let events = StdArc::new(StdMutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        API.set_trace_callback(move |e| {
+            events_clone.lock().unwrap().push(format!("{}", e));
+        });
+
+        API.clear();
+
+        let captured = events.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0], "Clearing the Registry");
+
+        API.clear_trace_callback();
     }
 
     #[test]
-    fn test_display_clear() {
-        let ev = RegistryEvent::Clear {};
-        assert_eq!(ev.to_string(), "Clearing the Registry");
+    #[serial]
+    fn test_clear_trace_callback_stops_events() {
+        API.clear();
+        use std::sync::{Arc as StdArc, Mutex as StdMutex};
+        let events = StdArc::new(StdMutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        // Set callback and register a value
+        API.set_trace_callback(move |e| {
+            events_clone.lock().unwrap().push(format!("{}", e));
+        });
+
+        API.register(10u16);
+
+        // Verify event was captured
+        {
+            let captured = events.lock().unwrap();
+            assert_eq!(captured.len(), 1);
+            assert_eq!(captured[0], "register { type_name: u16 }");
+        }
+
+        // Clear the callback
+        API.clear_trace_callback();
+
+        // Perform more operations - these should NOT be traced
+        API.register(20u16);
+        let _ = API.get::<u16>();
+        let _ = API.contains::<u16>();
+
+        // Verify no new events were captured
+        let captured = events.lock().unwrap();
+        assert_eq!(captured.len(), 1); // Still only the first event
+    }
+
+    #[test]
+    #[serial]
+    fn test_register_arc_directly() {
+        API.clear();
+        let value = Arc::new(42i32);
+        let clone = value.clone();
+        API.register_arc(value);
+
+        let retrieved: Arc<i32> = API.get().unwrap();
+        assert_eq!(*retrieved, 42);
+        assert_eq!(Arc::strong_count(&clone), 3); // clone + registry + retrieved
     }
 }

@@ -9,7 +9,7 @@
 /// use singleton_registry::RegistryEvent;
 ///
 /// let event = RegistryEvent::Register { type_name: "i32" };
-/// println!("{:?}", event);
+/// assert_eq!(event.to_string(), "register { type_name: i32 }");
 /// ```
 #[derive(Debug, Clone)]
 pub enum RegistryEvent {
@@ -34,6 +34,7 @@ pub enum RegistryEvent {
         /// Whether the type exists in the registry
         found: bool,
     },
+
     /// The registry was cleared.
     Clear {},
 }
@@ -64,30 +65,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_registry_event_display() {
-        let event = RegistryEvent::Register { type_name: "i32" };
-        assert_eq!(event.to_string(), "register { type_name: i32 }");
-
-        let event = RegistryEvent::Get {
-            type_name: "String",
-            found: true,
-        };
-        assert_eq!(event.to_string(), "get { type_name: String, found: true }");
-
-        let event = RegistryEvent::Contains {
-            type_name: "u8",
-            found: false,
-        };
-        assert_eq!(
-            event.to_string(),
-            "contains { type_name: u8, found: false }"
-        );
+    fn test_display_register() {
+        let ev = RegistryEvent::Register { type_name: "i32" };
+        assert_eq!(ev.to_string(), "register { type_name: i32 }");
     }
 
     #[test]
-    fn test_registry_event_clone() {
-        let event = RegistryEvent::Register { type_name: "i32" };
-        let cloned = event.clone();
-        assert_eq!(format!("{:?}", event), format!("{:?}", cloned));
+    fn test_display_get() {
+        let ev = RegistryEvent::Get {
+            type_name: "String",
+            found: true,
+        };
+        assert_eq!(ev.to_string(), "get { type_name: String, found: true }");
+    }
+
+    #[test]
+    fn test_display_contains() {
+        let ev = RegistryEvent::Contains {
+            type_name: "u8",
+            found: false,
+        };
+        assert_eq!(ev.to_string(), "contains { type_name: u8, found: false }");
+    }
+
+    #[test]
+    fn test_display_clear() {
+        let ev = RegistryEvent::Clear {};
+        assert_eq!(ev.to_string(), "Clearing the Registry");
     }
 }

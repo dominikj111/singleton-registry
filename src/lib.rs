@@ -11,20 +11,25 @@
 //! use singleton_registry::define_registry;
 //! use std::sync::Arc;
 //!
-//! // Create a registry using the macro
+//! // Create registries - each is isolated
 //! define_registry!(global);
+//! define_registry!(cache);
 //!
-//! // Register a value
+//! // Register values
 //! global::register("Hello, World!".to_string());
+//! cache::register(42i32);
 //!
-//! // Retrieve the value
+//! // Retrieve values
 //! let message: Arc<String> = global::get().unwrap();
+//! let number: Arc<i32> = cache::get().unwrap();
+//!
 //! assert_eq!(&*message, "Hello, World!");
+//! assert_eq!(*number, 42);
 //! ```
 //!
 //! ## Features
 //!
-//! - **Synchronous**: No async/await complexity - simple, direct API calls
+//! - **Simple API**: Direct function calls - no async/await required
 //! - **Thread-safe**: All operations are safe to use across multiple threads
 //! - **Type-safe**: Values are stored and retrieved with full type information
 //! - **True singleton**: Only one instance per type - later registrations override previous ones
@@ -34,9 +39,9 @@
 //!
 //! ## Main API
 //!
-//! - [`define_registry!`] - Macro to create a new registry
-//! - [`RegistryApi`] - Trait implemented by all registries
-//! - [`RegistryEvent`] - Events emitted during registry operations
+//! - [`define_registry!`] - Macro to create a registry with ergonomic free functions
+//! - [`RegistryApi`] - Trait providing the underlying registry operations
+//! - [`RegistryEvent`] - Events emitted during registry operations (for tracing)
 
 mod macros;
 mod registry_event;
