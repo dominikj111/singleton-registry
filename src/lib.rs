@@ -49,12 +49,15 @@
 //! - [`define_registry!`] - Macro to create a registry module with free functions
 //! - [`RegistryApi`] - Trait defining registry operations (for advanced usage)
 //! - [`RegistryEvent`] - Events emitted during operations (for tracing)
+//! - [`RegistryError`] - Error type for registry operations
 
 mod macros;
+mod registry_error;
 mod registry_event;
 mod registry_trait;
 
 // Re-export the public API
+pub use registry_error::RegistryError;
 pub use registry_event::RegistryEvent;
 pub use registry_trait::RegistryApi;
 

@@ -84,19 +84,19 @@ macro_rules! define_registry {
             }
 
             /// Retrieve a value from the registry.
-            pub fn get<T: Send + Sync + 'static>() -> Result<Arc<T>, String> {
+            pub fn get<T: Send + Sync + 'static>() -> Result<Arc<T>, $crate::RegistryError> {
                 use $crate::RegistryApi;
                 API.get()
             }
 
             /// Retrieve a cloned value from the registry.
-            pub fn get_cloned<T: Send + Sync + Clone + 'static>() -> Result<T, String> {
+            pub fn get_cloned<T: Send + Sync + Clone + 'static>() -> Result<T, $crate::RegistryError> {
                 use $crate::RegistryApi;
                 API.get_cloned()
             }
 
             /// Check if a type is registered in the registry.
-            pub fn contains<T: Send + Sync + 'static>() -> Result<bool, String> {
+            pub fn contains<T: Send + Sync + 'static>() -> Result<bool, $crate::RegistryError> {
                 use $crate::RegistryApi;
                 API.contains::<T>()
             }

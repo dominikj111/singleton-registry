@@ -294,7 +294,9 @@ mod advanced {
         }
 
         /// Get with logging
-        fn get_with_log<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, String> {
+        fn get_with_log<T: Send + Sync + 'static>(
+            &self,
+        ) -> Result<Arc<T>, singleton_registry::RegistryError> {
             println!("Getting type: {}", std::any::type_name::<T>());
             self.inner.get()
         }

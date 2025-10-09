@@ -10,7 +10,7 @@ use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 
-use crate::RegistryEvent;
+use crate::{RegistryError, RegistryEvent};
 
 /// Type alias for the trace callback storage.
 ///
@@ -104,26 +104,20 @@ pub trait RegistryApi {
     /// - Type `T` is not found in the registry
     /// - Type mismatch (extremely rare)
     /// - Registry lock is poisoned
-    fn get<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, String> {
+    fn get<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, RegistryError> {
         let map = Self::storage()
             .lock()
-            .map_err(|_| "Failed to acquire registry lock".to_string())?;
+            .map_err(|_| RegistryError::RegistryLock)?;
 
         let any_arc_opt = map.get(&TypeId::of::<T>()).cloned();
 
         drop(map);
 
-        let result: Result<Arc<T>, String> = match any_arc_opt {
-            Some(any_arc) => any_arc.downcast::<T>().map_err(|_| {
-                format!(
-                    "Type mismatch in registry for type: {}",
-                    std::any::type_name::<T>()
-                )
-            }),
-            None => Err(format!(
-                "Type not found in registry: {}",
-                std::any::type_name::<T>()
-            )),
+        let result: Result<Arc<T>, RegistryError> = match any_arc_opt {
+            Some(any_arc) => any_arc
+                .downcast::<T>()
+                .map_err(|_| RegistryError::TypeMismatch),
+            None => Err(RegistryError::TypeNotFound),
         };
 
         self.emit_event(&RegistryEvent::Get {
@@ -143,7 +137,7 @@ pub trait RegistryApi {
     ///
     /// - Type `T` is not found in the registry
     /// - Type mismatch
-    fn get_cloned<T: Send + Sync + Clone + 'static>(&self) -> Result<T, String> {
+    fn get_cloned<T: Send + Sync + Clone + 'static>(&self) -> Result<T, RegistryError> {
         let arc = self.get::<T>()?;
         Ok((*arc).clone())
     }
@@ -155,11 +149,11 @@ pub trait RegistryApi {
     /// # Errors
     ///
     /// - Registry lock is poisoned
-    fn contains<T: Send + Sync + 'static>(&self) -> Result<bool, String> {
+    fn contains<T: Send + Sync + 'static>(&self) -> Result<bool, RegistryError> {
         let found = Self::storage()
             .lock()
             .map(|m| m.contains_key(&TypeId::of::<T>()))
-            .map_err(|_| "Failed to acquire registry lock".to_string())?;
+            .map_err(|_| RegistryError::RegistryLock)?;
 
         self.emit_event(&RegistryEvent::Contains {
             type_name: std::any::type_name::<T>(),
@@ -170,7 +164,7 @@ pub trait RegistryApi {
     }
 
     #[doc(hidden)]
-    fn get_ref<T: Send + Sync + Clone + 'static>(&self) -> Result<&'static T, String> {
+    fn get_ref<T: Send + Sync + Clone + 'static>(&self) -> Result<&'static T, RegistryError> {
         let arc = self.get::<T>()?;
         let ptr = Arc::into_raw(arc);
         Ok(unsafe { &*ptr })
@@ -192,6 +186,8 @@ pub trait RegistryApi {
 
 #[cfg(test)]
 mod tests {
+    use crate::RegistryError;
+
     use super::{RegistryApi, TraceCallback};
 
     use serial_test::serial;
@@ -220,7 +216,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_register_and_get_primitive() -> Result<(), String> {
+    fn test_register_and_get_primitive() -> Result<(), RegistryError> {
         // Clear any previous state
         API.clear();
 
@@ -261,12 +257,9 @@ mod tests {
     fn test_get_nonexistent() {
         API.clear();
 
-        let result: Result<Arc<String>, _> = API.get();
+        let result: Result<Arc<String>, RegistryError> = API.get();
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            "Type not found in registry: alloc::string::String"
-        );
+        assert_eq!(result.unwrap_err(), RegistryError::TypeNotFound);
     }
 
     #[test]
@@ -370,7 +363,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_tuple_type() -> Result<(), String> {
+    fn test_tuple_type() -> Result<(), RegistryError> {
         API.clear();
 
         let tuple = (1, "test");
