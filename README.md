@@ -144,6 +144,28 @@ fn get_config() -> Result<std::sync::Arc<String>, singleton_registry::RegistryEr
 
 **Best Practice:** Register all required types during initialization-time to ensure `get()` never fails during runtime.
 
+## Roadmap
+
+### v2.1.0 (Planned)
+
+- **`try_register()`** - Explicit error handling for registration operations
+- **Enhanced documentation** - Add "Limitations" section and comparison with alternatives
+- **Benchmarks** - Document performance characteristics
+- **Lock poisoning tests** - Verify recovery behavior under stress
+
+### Future Considerations
+
+- `get_or_default()` - Convenience method with fallback values
+- `get_or_init()` - Lazy initialization support
+- `register_if_absent()` - Conditional registration
+
+### Non-Goals
+
+- Async support (keeping it synchronous by design)
+- Removal operations (override-only by design)
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
 ## Installation
 
 Add this to your `Cargo.toml`:
