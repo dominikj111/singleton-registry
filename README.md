@@ -6,15 +6,16 @@ Each type can have only **one instance** per registry.
 
 > **⚠️ Breaking Change in v2.0**: This version uses a macro-based API. If you're upgrading from v1.x, you'll need to use `define_registry!` to create registries instead of using global functions. See the Quick Start below for the new API.
 
-## Features
+## Features & Design
 
 - **Synchronous API**: No async/await complexity - simple function calls
-- **Thread-safe**: All operations safe across multiple threads
+- **Thread-safe**: All operations safe across multiple threads using `Arc` and `Mutex`
+- **Isolated registries**: Create multiple independent registries with `define_registry!` - no hidden globals
 - **True singleton**: Only one instance per type per registry
-- **Isolated registries**: Create multiple independent registries with `define_registry!`
+- **Write-once pattern**: Designed for initialization-time registration with optional runtime overrides
+- **No removal**: Values can be overridden but not removed - provide default values for fail-safe operation
 - **Override-friendly**: Later registrations replace previous ones
-- **Write-once, read-many**: Optimized for configuration and shared resources
-- **Tracing support**: Optional callback system for monitoring
+- **Tracing support**: Optional callback system for monitoring operations
 
 ## Quick Start
 
@@ -89,11 +90,49 @@ Each registry created with `define_registry!(name)` provides:
 
 - `name::register(value)` - Register a value
 - `name::register_arc(arc_value)` - Register an Arc-wrapped value
-- `name::get::<T>()` - Retrieve a value as `Arc<T>`
-- `name::get_cloned::<T>()` - Retrieve a cloned value (requires `Clone`)
-- `name::contains::<T>()` - Check if a type is registered
+- `name::get::<T>()` - Retrieve a value as `Arc<T>` (returns `Result`)
+- `name::get_cloned::<T>()` - Retrieve a cloned value (requires `Clone`, returns `Result`)
+- `name::contains::<T>()` - Check if a type is registered (returns `Result`)
 - `name::set_trace_callback(callback)` - Set up tracing
 - `name::clear_trace_callback()` - Clear tracing
+
+## Error Handling
+
+All fallible operations return `Result<T, RegistryError>`:
+
+```rust
+pub enum RegistryError {
+    /// Type not found in the registry
+    TypeNotFound { type_name: &'static str },
+
+    /// Type mismatch during retrieval (should never happen)
+    TypeMismatch { type_name: &'static str },
+
+    /// Failed to acquire registry lock (automatically recovered)
+    RegistryLock,
+}
+```
+
+**Example:**
+
+```rust
+use singleton_registry::define_registry;
+
+define_registry!(app);
+
+// Handle errors explicitly
+match app::get::<String>() {
+    Ok(value) => println!("Found: {}", value),
+    Err(e) => eprintln!("Error: {}", e),  // "Type not found in registry: alloc::string::String"
+}
+
+// Or use ? operator
+fn get_config() -> Result<std::sync::Arc<String>, singleton_registry::RegistryError> {
+    app::get::<String>()
+}
+```
+
+**Note on Lock Poisoning:** The registry automatically recovers from poisoned locks by extracting the inner value. This is safe because registry operations are idempotent.
 
 ## Use Cases
 
@@ -103,11 +142,7 @@ Each registry created with `define_registry!(name)` provides:
 - **Shared resources** and components
 - **Service locator pattern** with type safety
 
-## Design Philosophy
-
-- **Explicit**: Must create registries with `define_registry!` - no hidden globals
-- **Isolated**: Each registry is independent - no cross-contamination
-- **Thread-safe**: All operations safe across threads
+**Best Practice:** Register all required types during initialization-time to ensure `get()` never fails during runtime.
 
 ## Installation
 

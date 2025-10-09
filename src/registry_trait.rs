@@ -38,6 +38,12 @@ pub trait RegistryApi {
     /// Set a tracing callback for registry operations.
     ///
     /// The callback will be invoked for every registry operation (register, get, contains).
+    ///
+    /// # Lock Poisoning Recovery
+    ///
+    /// If the trace lock is poisoned (due to a panic while holding the lock),
+    /// this method automatically recovers by extracting the inner value.
+    /// This is safe because trace operations are non-critical and idempotent.
     fn set_trace_callback(&self, callback: impl Fn(&RegistryEvent) + Send + Sync + 'static) {
         let mut guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
         *guard = Some(Arc::new(callback));
@@ -46,6 +52,11 @@ pub trait RegistryApi {
     /// Clear the tracing callback.
     ///
     /// After calling this, no tracing events will be emitted.
+    /// Note: This does not affect registered values, only the tracing callback.
+    ///
+    /// # Lock Poisoning Recovery
+    ///
+    /// If the trace lock is poisoned, this method automatically recovers.
     fn clear_trace_callback(&self) {
         let mut guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
         *guard = None;
@@ -54,7 +65,16 @@ pub trait RegistryApi {
     /// Convenience wrapper to emit a registry event using the current callback.
     ///
     /// If a trace callback is set, this method will invoke it with the provided event.
-    /// Lock poisoning is handled by recovering the lock and continuing execution.
+    ///
+    /// # Lock Poisoning Recovery
+    ///
+    /// Lock poisoning is automatically recovered by extracting the inner value.
+    ///
+    /// # Panics
+    ///
+    /// If the callback itself panics, the panic will propagate to the caller.
+    /// The registry lock is not held during callback execution, so this won't
+    /// poison the registry storage.
     fn emit_event(&self, event: &RegistryEvent) {
         let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
         if let Some(callback) = guard.as_ref() {
@@ -75,6 +95,13 @@ pub trait RegistryApi {
     ///
     /// Takes ownership of the value and wraps it in an `Arc` automatically.
     /// If a value of the same type is already registered, it will be replaced.
+    ///
+    /// # Design Note
+    ///
+    /// This method does not return a `Result` because registration is designed
+    /// for the "write-once" pattern during application startup (and rarelly at runtime for rewrite). Lock poisoning
+    /// is automatically recovered. If registration must succeed, ensure your
+    /// application initialization doesn't panic while holding registry locks.
     fn register<T: Send + Sync + 'static>(&self, value: T) {
         self.register_arc(Arc::new(value));
     }
@@ -83,6 +110,11 @@ pub trait RegistryApi {
     ///
     /// More efficient than `register` when you already have an `Arc`,
     /// as it avoids creating an additional reference count.
+    ///
+    /// # Lock Poisoning Recovery
+    ///
+    /// If the storage lock is poisoned, this method automatically recovers.
+    /// This is safe because the insert operation is idempotent.
     fn register_arc<T: Send + Sync + 'static>(&self, value: Arc<T>) {
         self.emit_event(&RegistryEvent::Register {
             type_name: std::any::type_name::<T>(),
@@ -116,8 +148,12 @@ pub trait RegistryApi {
         let result: Result<Arc<T>, RegistryError> = match any_arc_opt {
             Some(any_arc) => any_arc
                 .downcast::<T>()
-                .map_err(|_| RegistryError::TypeMismatch),
-            None => Err(RegistryError::TypeNotFound),
+                .map_err(|_| RegistryError::TypeMismatch {
+                    type_name: std::any::type_name::<T>(),
+                }),
+            None => Err(RegistryError::TypeNotFound {
+                type_name: std::any::type_name::<T>(),
+            }),
         };
 
         self.emit_event(&RegistryEvent::Get {
@@ -163,13 +199,30 @@ pub trait RegistryApi {
         Ok(found)
     }
 
-    #[doc(hidden)]
-    fn get_ref<T: Send + Sync + Clone + 'static>(&self) -> Result<&'static T, RegistryError> {
-        let arc = self.get::<T>()?;
-        let ptr = Arc::into_raw(arc);
-        Ok(unsafe { &*ptr })
-    }
+    // EDUCATIONAL: Memory leak demonstration (commented out)
+    //
+    // This method demonstrates a common pitfall when working with Arc::into_raw().
+    // It leaks memory because the Arc reference count is never decremented.
+    // Every call to this method leaks one Arc reference permanently.
+    //
+    // #[doc(hidden)]
+    // fn get_ref<T: Send + Sync + Clone + 'static>(&self) -> Result<&'static T, RegistryError> {
+    //     let arc = self.get::<T>()?;
+    //     let ptr = Arc::into_raw(arc);  // ⚠️ MEMORY LEAK: Arc is never freed
+    //     Ok(unsafe { &*ptr })
+    // }
 
+    /// Clear all registered values from the registry.
+    ///
+    /// This method is primarily intended for testing. It removes all registered
+    /// values but does NOT affect:
+    /// - Already-retrieved `Arc<T>` references (they remain valid)
+    /// - The tracing callback (use `clear_trace_callback()` to clear that)
+    ///
+    /// # Lock Poisoning Recovery
+    ///
+    /// If the storage lock is poisoned, this method silently fails.
+    /// This is acceptable for a test-only method.
     #[doc(hidden)]
     fn clear(&self) {
         self.emit_event(&RegistryEvent::Clear {});
@@ -259,7 +312,12 @@ mod tests {
 
         let result: Result<Arc<String>, RegistryError> = API.get();
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), RegistryError::TypeNotFound);
+        assert_eq!(
+            result.unwrap_err(),
+            RegistryError::TypeNotFound {
+                type_name: "alloc::string::String"
+            }
+        );
     }
 
     #[test]
@@ -396,24 +454,29 @@ mod tests {
         assert_eq!(value, "hello");
     }
 
-    #[test]
-    #[serial]
-    fn test_get_ref() {
-        API.clear();
-        API.register("world".to_string());
-        let value: &'static String = API.get_ref::<String>().unwrap();
-        assert_eq!(value, "world");
-
-        // WARNING: The following line causes undefined behavior (UB).
-        // After calling `clear`, the original `String` has been dropped and its memory deallocated,
-        // but `value` is still a reference to the old memory location. Accessing or printing `value`
-        // after this point is use-after-free, which is always UB in Rust. This may cause a crash,
-        // memory corruption, or appear to "work" by accident, depending on the allocator and OS.
-        // This code is for demonstration purposes only—never use a leaked reference after the value is dropped!
-        // API.clear(); // value is dropped
-        // let _ = value.len();
-        // eprintln!("{}", value);
-    }
+    // EDUCATIONAL: Memory leak test (commented out)
+    //
+    // This test demonstrates the memory leak in the get_ref() method above.
+    // Uncomment this along with get_ref() to see the leak in action.
+    //
+    // #[test]
+    // #[serial]
+    // fn test_get_ref() {
+    //     API.clear();
+    //     API.register("world".to_string());
+    //     let value: &'static String = API.get_ref::<String>().unwrap();
+    //     assert_eq!(value, "world");
+    //
+    //     // WARNING: The following line causes undefined behavior (UB).
+    //     // After calling `clear`, the original `String` has been dropped and its memory deallocated,
+    //     // but `value` is still a reference to the old memory location. Accessing or printing `value`
+    //     // after this point is use-after-free, which is always UB in Rust. This may cause a crash,
+    //     // memory corruption, or appear to "work" by accident, depending on the allocator and OS.
+    //     // This code is for demonstration purposes only—never use a leaked reference after the value is dropped!
+    //     // API.clear(); // value is dropped
+    //     // let _ = value.len();
+    //     // eprintln!("{}", value);
+    // }
 
     #[test]
     #[serial]
