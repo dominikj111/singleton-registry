@@ -1,21 +1,15 @@
 [package]
 name = "singleton-registry"
-version = "1.0.1"
+version = "2.0.0"
 edition = "2021"
 authors = ["Dominik Jelinek <dominik.jelinek111@gmail.com>"]
-description = "A synchronous, thread-safe singleton registry for global type-based storage and retrieval"
+description = "A thread-safe singleton registry for Rust with isolated, per-type storage"
 license = "BSD-3-Clause"
 repository = "https://github.com/dominikj111/singleton-registry"
 homepage = "https://github.com/dominikj111/singleton-registry"
 documentation = "https://docs.rs/singleton-registry"
 readme = "README.md"
-keywords = [
-    "synchronous",
-    "singleton",
-    "type-based",
-    "registry",
-    "global",
-]
+keywords = ["singleton", "registry", "thread-safe", "storage", "isolated"]
 categories = ["data-structures", "concurrency"]
 
 [dependencies]

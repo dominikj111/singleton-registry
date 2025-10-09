@@ -1,105 +1,113 @@
 # singleton-registry
 
 A **thread-safe singleton registry** for Rust.  
-Store and retrieve **any type** globally - structs, primitives, functions, or closures.  
-Each type can have only **one instance** registered at a time (true singleton pattern).  
-Designed for write-once, read-many pattern with minimal overhead.
+Create isolated registries for storing and retrieving any type.  
+Each type can have only **one instance** per registry.
+
+> **⚠️ Breaking Change in v2.0**: This version uses a macro-based API. If you're upgrading from v1.x, you'll need to use `define_registry!` to create registries instead of using global functions. See the Quick Start below for the new API.
 
 ## Features
 
-- **Synchronous**: No async/await complexity - simple, direct API calls
-- **Thread-safe**: All operations are safe to use across multiple threads
-- **Type-safe**: Values are stored and retrieved with full type information
-- **True singleton**: Only one instance per type - later registrations override previous ones
-- **Minimal overhead**: Efficient Arc-based storage with fast lookups
-- **Tracing support**: Optional callback system for monitoring registry operations
-- **No external dependencies**: Pure Rust implementation
+- **Synchronous API**: No async/await complexity - simple function calls
+- **Thread-safe**: All operations safe across multiple threads
+- **True singleton**: Only one instance per type per registry
+- **Isolated registries**: Create multiple independent registries with `define_registry!`
+- **Override-friendly**: Later registrations replace previous ones
+- **Write-once, read-many**: Optimized for configuration and shared resources
+- **Tracing support**: Optional callback system for monitoring
 
 ## Quick Start
 
 ```rust
-use singleton_registry::{register, get};
+use singleton_registry::define_registry;
 use std::sync::Arc;
 
-// Register a value (only one String can be registered)
-register("Hello, World!".to_string());
+define_registry!(global);
+define_registry!(cache);
 
-// Later registration of same type overrides the previous one
-register("New message!".to_string());
+global::register("Hello, World!".to_string());
+cache::register(42i32);
 
-// Retrieve the latest value
-let message: Arc<String> = get().unwrap();
-assert_eq!(&*message, "New message!");
+let message: Arc<String> = global::get().unwrap();
+let number: Arc<i32> = cache::get().unwrap();
+
+assert_eq!(&*message, "Hello, World!");
+assert_eq!(*number, 42);
 ```
 
 ## Advanced Usage
 
 ```rust
-use singleton_registry::{register, get, contains, set_trace_callback};
+use singleton_registry::define_registry;
 use std::sync::Arc;
 
-// Register different types
-register(42i32);
-register("config".to_string());
+define_registry!(app);
 
-// Register a function pointer
-let multiply_by_two: fn(i32) -> i32 = |x| x * 2;
-register(multiply_by_two);
-
-// Check if a type is registered
-assert!(contains::<i32>().unwrap());
-
-// Retrieve values
-let number: Arc<i32> = get().unwrap();
-let config: Arc<String> = get().unwrap();
-let doubler: Arc<fn(i32) -> i32> = get().unwrap();
-
-// Use the function
-let result = doubler(21); // returns 42
-
-// Set up tracing
-set_trace_callback(|event| {
+app::set_trace_callback(|event| {
     println!("Registry event: {}", event);
 });
+
+app::register(12i32);
+app::register("config".to_string());
+
+let multiply_by_two: fn(i32) -> i32 = |x| x * 2;
+app::register(multiply_by_two);
+
+assert!(app::contains::<i32>().unwrap());
+
+let number: Arc<i32> = app::get().unwrap();
+let config: Arc<String> = app::get().unwrap();
+let doubler: Arc<fn(i32) -> i32> = app::get().unwrap();
+
+let result = doubler(21);
+
+assert_eq!(result, 42);
+assert_eq!(*number, 12);
+assert_eq!(&*config, "config");
+```
+
+## Multiple Isolated Registries
+
+```rust
+use singleton_registry::define_registry;
+
+define_registry!(database);
+define_registry!(cache);
+define_registry!(config);
+
+database::register("postgresql://localhost".to_string());
+cache::register("redis://localhost".to_string());
+config::register("app_config".to_string());
+
+let db_conn = database::get::<String>().unwrap();
+let cache_conn = cache::get::<String>().unwrap();
 ```
 
 ## API Reference
 
-- `register(value)` - Register a value in the global registry
-- `register_arc(arc_value)` - Register an Arc-wrapped value (more efficient)
-- `get::<T>()` - Retrieve a value as `Arc<T>`
-- `get_cloned::<T>()` - Retrieve a cloned value (requires `Clone`)
-- `contains::<T>()` - Check if a type is registered
-- `set_trace_callback(callback)` - Set up tracing for registry operations
-- `clear_trace_callback()` - Disable tracing
+Each registry created with `define_registry!(name)` provides:
+
+- `name::register(value)` - Register a value
+- `name::register_arc(arc_value)` - Register an Arc-wrapped value
+- `name::get::<T>()` - Retrieve a value as `Arc<T>`
+- `name::get_cloned::<T>()` - Retrieve a cloned value (requires `Clone`)
+- `name::contains::<T>()` - Check if a type is registered
+- `name::set_trace_callback(callback)` - Set up tracing
+- `name::clear_trace_callback()` - Clear tracing
 
 ## Use Cases
 
 - **Application singletons** (Config, Logger, DatabasePool, etc.)
-- **Global state** and constants shared across modules
-- **Function helpers** and utility closures accessible anywhere
+- **Isolated contexts** (per-module registries, test isolation)
+- **Function helpers** and utility closures
 - **Shared resources** and components
-- **Cross-cutting concerns** accessible throughout your application
+- **Service locator pattern** with type safety
 
 ## Design Philosophy
 
-- **Simple**: Clean API without complex macros or derive attributes
-- **Safe**: Values stored in `Arc<T>` with full type checking
-- **Global**: One central registry shared across the entire program
-- **Process-wide**: The registry is shared across all crates in the same process
-- **Singleton**: Each type can only have one registered instance - true singleton behavior
-- **Override-friendly**: Later registrations replace previous ones for the same type
-- **Efficient**: Write-once, read-many pattern optimized for performance
-
-## Important Notes
-
-### Process-wide Sharing
-
-This registry is implemented as a global static variable, meaning it's shared across all crates in the same process. Any crate that depends on `singleton-registry` will access the same registry instance.
-
-### Context Resolution
-
-Currently, the registry operates in a single global context. If you need request-scoped or context-aware resolution, please open an issue to discuss your use case. I'm considering adding support for scoped registries in future versions.
+- **Explicit**: Must create registries with `define_registry!` - no hidden globals
+- **Isolated**: Each registry is independent - no cross-contamination
+- **Thread-safe**: All operations safe across threads
 
 ## Installation
 
@@ -107,7 +115,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-singleton-registry = "1.0"
+singleton-registry = "2.0"
 ```
 
 ## License

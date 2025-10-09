@@ -1,47 +1,54 @@
 //! # Singleton Registry
 //!
 //! A thread-safe singleton registry for Rust.
-//! Store and retrieve **any type** globally - structs, primitives, functions, or closures.
-//! Each type can have only **one instance** registered at a time (true singleton pattern).
-//! Designed for write-once, read-many pattern with minimal overhead.
+//! Store and retrieve **any type** with isolated registries.
+//! Each type can have only **one instance** per registry.
 //!
-//! ## Quick Start
+//! ## Features
+//!
+//! - **Thread-safe**: All operations safe across multiple threads
+//! - **Isolated registries**: Create multiple independent registries with `define_registry!`
+//! - **True singleton**: Only one instance per type per registry
+//! - **Override-friendly**: Later registrations replace previous ones
+//! - **Write-once, read-many**: Optimized for configuration and shared resources
+//! - **Tracing support**: Optional callback system for monitoring
+//!
+//! ## Usage
 //!
 //! ```rust
 //! use singleton_registry::define_registry;
 //! use std::sync::Arc;
 //!
-//! // Create registries - each is isolated
-//! define_registry!(global);
-//! define_registry!(cache);
+//! define_registry!(app);
 //!
-//! // Register values
-//! global::register("Hello, World!".to_string());
-//! cache::register(42i32);
+//! app::set_trace_callback(|event| {
+//!     println!("Registry event: {}", event);
+//! });
 //!
-//! // Retrieve values
-//! let message: Arc<String> = global::get().unwrap();
-//! let number: Arc<i32> = cache::get().unwrap();
+//! app::register(12i32);
+//! app::register("config".to_string());
 //!
-//! assert_eq!(&*message, "Hello, World!");
-//! assert_eq!(*number, 42);
+//! let multiply_by_two: fn(i32) -> i32 = |x| x * 2;
+//! app::register(multiply_by_two);
+//!
+//! assert!(app::contains::<i32>().unwrap());
+//!
+//! let number: Arc<i32> = app::get().unwrap();
+//! let config: Arc<String> = app::get().unwrap();
+//! let doubler: Arc<fn(i32) -> i32> = app::get().unwrap();
+//!
+//! let result = doubler(21);
+//!
+//! assert_eq!(result, 42);
+//! assert_eq!(*number, 12);
+//! assert_eq!(&*config, "config");
 //! ```
 //!
-//! ## Features
+//! ## Core API
 //!
-//! - **Simple API**: Direct function calls - no async/await required
-//! - **Thread-safe**: All operations are safe to use across multiple threads
-//! - **Type-safe**: Values are stored and retrieved with full type information
-//! - **True singleton**: Only one instance per type - later registrations override previous ones
-//! - **Minimal overhead**: Efficient Arc-based storage with fast lookups
-//! - **Tracing support**: Optional callback system for monitoring registry operations
-//! - **No external dependencies**: Pure Rust implementation
-//!
-//! ## Main API
-//!
-//! - [`define_registry!`] - Macro to create a registry with ergonomic free functions
-//! - [`RegistryApi`] - Trait providing the underlying registry operations
-//! - [`RegistryEvent`] - Events emitted during registry operations (for tracing)
+//! - [`define_registry!`] - Macro to create a registry module with free functions
+//! - [`RegistryApi`] - Trait defining registry operations (for advanced usage)
+//! - [`RegistryEvent`] - Events emitted during operations (for tracing)
 
 mod macros;
 mod registry_event;
