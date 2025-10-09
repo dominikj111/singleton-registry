@@ -210,9 +210,7 @@ fn test_plugin_system_pattern() {
     // Register plugins by wrapping in a container
     type PluginRegistry = Vec<Arc<dyn Plugin>>;
 
-    let mut plugins: PluginRegistry = Vec::new();
-    plugins.push(Arc::new(LogPlugin));
-    plugins.push(Arc::new(CachePlugin));
+    let plugins: PluginRegistry = vec![Arc::new(LogPlugin), Arc::new(CachePlugin)];
 
     advanced::register(plugins);
 

@@ -73,7 +73,7 @@ fn test_multiple_types_in_multiple_registries() {
     multi_a::register(42i32);
     multi_a::register("hello".to_string());
 
-    multi_b::register(3.14f64);
+    multi_b::register(std::f64::consts::PI);
     multi_b::register(true);
 
     // Verify isolation

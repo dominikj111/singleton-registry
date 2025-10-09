@@ -61,11 +61,11 @@ fn test_get_cloned_string() {
 #[serial]
 fn test_register_and_retrieve_float() {
     // Register a float value
-    primitives::register(3.14f64);
+    primitives::register(4.63f64);
 
     // Retrieve it back
     let value: Arc<f64> = primitives::get().unwrap();
-    assert_eq!(*value, 3.14);
+    assert_eq!(*value, 4.63);
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn test_register_and_retrieve_boolean() {
 
     // Retrieve it back
     let value: Arc<bool> = primitives::get().unwrap();
-    assert_eq!(*value, true);
+    assert!(*value);
 }
 
 #[test]

@@ -64,16 +64,16 @@ fn test_register_multiple_types() {
     // Register different types
     MY_REGISTRY.register(100u32);
     MY_REGISTRY.register("Hello".to_string());
-    MY_REGISTRY.register(3.14f64);
+    MY_REGISTRY.register(9.221f64);
 
     // Retrieve them
     let num: Arc<u32> = MY_REGISTRY.get().unwrap();
     let text: Arc<String> = MY_REGISTRY.get().unwrap();
-    let pi: Arc<f64> = MY_REGISTRY.get().unwrap();
+    let some_float: Arc<f64> = MY_REGISTRY.get().unwrap();
 
     assert_eq!(*num, 100);
     assert_eq!(&**text, "Hello");
-    assert_eq!(*pi, 3.14);
+    assert_eq!(*some_float, 9.221);
 }
 
 #[test]

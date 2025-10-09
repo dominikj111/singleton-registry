@@ -112,6 +112,13 @@ macro_rules! define_registry {
                 use $crate::RegistryApi;
                 API.clear_trace_callback()
             }
+
+            /// Clear the registry.
+            #[doc(hidden)]
+            pub fn clear() {
+                use $crate::RegistryApi;
+                API.clear()
+            }
         }
     };
 }

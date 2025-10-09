@@ -204,3 +204,40 @@ fn test_trace_callback_replacement() {
 
     traced7::clear_trace_callback();
 }
+
+#[test]
+fn test_callback_can_use_different_registry() {
+    define_registry!(main_registry);
+    define_registry!(log_registry);
+
+    use std::sync::Mutex;
+
+    // Use a Vec to collect all events since registry only stores one value per type
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let events_clone = events.clone();
+
+    // Set up a trace callback that logs to a different registry
+    main_registry::set_trace_callback(move |event| {
+        // This is SAFE - we're using a different registry
+        events_clone.lock().unwrap().push(format!("{}", event));
+        log_registry::register(format!("Last event: {}", event));
+    });
+
+    // Register a value in main registry
+    main_registry::register(42i32);
+
+    // Verify the main value was registered
+    let value: Arc<i32> = main_registry::get().unwrap();
+    assert_eq!(*value, 42);
+
+    // Verify the trace was logged
+    let captured = events.lock().unwrap();
+    assert!(captured[0].contains("register"));
+    assert!(captured[0].contains("i32"));
+
+    // Verify we can also use another registry in the callback
+    let last_log: Arc<String> = log_registry::get().unwrap();
+    assert!(last_log.contains("get"));
+
+    main_registry::clear_trace_callback();
+}

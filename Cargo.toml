@@ -11,6 +11,7 @@ documentation = "https://docs.rs/singleton-registry"
 readme = "README.md"
 keywords = ["singleton", "registry", "thread-safe", "storage", "isolated"]
 categories = ["data-structures", "concurrency"]
+rust-version = "1.80.0"
 
 [dependencies]
 

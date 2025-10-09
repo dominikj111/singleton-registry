@@ -44,6 +44,12 @@ pub trait RegistryApi {
     /// If the trace lock is poisoned (due to a panic while holding the lock),
     /// this method automatically recovers by extracting the inner value.
     /// This is safe because trace operations are non-critical and idempotent.
+    ///
+    /// # Safety Restrictions
+    ///
+    /// The callback must NOT call any registry methods on the same registry,
+    /// as this will cause a deadlock. The callback is invoked while holding
+    /// the trace lock.
     fn set_trace_callback(&self, callback: impl Fn(&RegistryEvent) + Send + Sync + 'static) {
         let mut guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
         *guard = Some(Arc::new(callback));
@@ -99,7 +105,7 @@ pub trait RegistryApi {
     /// # Design Note
     ///
     /// This method does not return a `Result` because registration is designed
-    /// for the "write-once" pattern during application startup (and rarelly at runtime for rewrite). Lock poisoning
+    /// for the "write-once" pattern during application startup (and rarely at runtime for rewrite). Lock poisoning
     /// is automatically recovered. If registration must succeed, ensure your
     /// application initialization doesn't panic while holding registry locks.
     fn register<T: Send + Sync + 'static>(&self, value: T) {
@@ -425,7 +431,7 @@ mod tests {
         API.clear();
 
         let tuple = (1, "test");
-        API.register(tuple.clone());
+        API.register(tuple);
 
         let retrieved = API.get::<(i32, &str)>()?;
         assert_eq!(&*retrieved, &tuple);
