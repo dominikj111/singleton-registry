@@ -17,6 +17,54 @@ Each type can have only **one instance** per registry.
 - **Override-friendly**: Later registrations replace previous ones
 - **Tracing support**: Optional callback system for monitoring operations
 
+## Design Philosophy
+
+This crate implements a **contract-based service locator** pattern:
+
+### Contracts as Traits
+
+A **contract** is a trait (interface) that defines the API a singleton must fulfill. By registering trait objects (`Arc<dyn MyTrait>`), you decouple consumers from concrete implementations. Any part of your system can request the contract without knowing which implementation backs it.
+
+### Singleton Replacement & Arc Safety
+
+When you re-register a type, the registry atomically replaces the stored `Arc`. However, **existing references remain valid**:
+
+```rust
+let old_ref: Arc<MyService> = registry::get().unwrap();  // Holds Arc clone
+registry::register(new_service);                          // Registry updated
+// old_ref still works - it holds the previous Arc until dropped
+let new_ref: Arc<MyService> = registry::get().unwrap();  // Gets new instance
+```
+
+This enables runtime replacement (e.g., hot-swapping configurations) without breaking in-flight operations.
+
+### Unit Testing Without Mocking Libraries
+
+Register mock implementations during test setup:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    define_registry!(test_registry);
+    
+    #[test]
+    fn test_with_mock() {
+        test_registry::register(Arc::new(MockService) as Arc<dyn ServiceContract>);
+        // Test code uses test_registry::get() - no external mocking crate needed
+    }
+}
+```
+
+### Enforcing Good Architecture
+
+The registry pattern encourages:
+
+- **Interface segregation**: Define focused contracts (traits)
+- **Dependency inversion**: Depend on abstractions, not concretions
+- **Single responsibility**: Each singleton handles one concern
+
 ## Quick Start
 
 ```rust
@@ -165,6 +213,25 @@ fn get_config() -> Result<std::sync::Arc<String>, singleton_registry::RegistryEr
 - Removal operations (override-only by design)
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
+## Running Examples
+
+The `examples/` directory contains runnable demonstrations:
+
+```bash
+# Basic usage: primitives, structs, get(), get_cloned(), contains()
+cargo run --example basic_usage
+
+# Trait contracts: register and retrieve trait objects
+cargo run --example trait_contracts
+
+# Singleton replacement: Arc reference safety during runtime swaps
+cargo run --example singleton_replacement
+```
+
+## Porting to Other Languages
+
+If you want to implement a similar registry in TypeScript, C++, or another language, see [PORTING.md](PORTING.md) for design decisions and implementation guidance.
 
 ## Installation
 
