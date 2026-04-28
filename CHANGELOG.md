@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-04-28
+
+### Added
+
+- `try_get<T>() -> Option<Arc<T>>` — first-class graceful-degradation retrieval; equivalent to `get().ok()` but explicit in the public API surface and matching the language-neutral JigsawFlow spec
+- `RegistryEvent::RegisterCompleted` — `register` now emits two events: `Register` before the insert and `RegisterCompleted` after; if a panic occurs mid-store, the trace log shows which call was in-flight
+
+### Fixed
+
+- `emit_event` now releases the TRACE lock before invoking the callback (Arc is cloned out of the guard, guard is dropped, then callback is called); no internal lock is held during user callback execution, preventing re-entrancy deadlocks
+
+### Changed
+
+- `PORTING.md` replaced with a pointer to the JigsawFlow PLAN.md cross-language reference, which now covers all porting guidance
+- Cargo.toml description updated to reflect standalone usability alongside JigsawFlow context
+- `serial_test` dev-dependency upgraded to latest
+
 ## [2.0.0] - 2025-10-09
 
 ### ⚠️ Breaking Changes
