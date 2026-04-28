@@ -82,9 +82,12 @@ pub trait RegistryApi {
     /// The registry lock is not held during callback execution, so this won't
     /// poison the registry storage.
     fn emit_event(&self, event: &RegistryEvent) {
-        let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
-        if let Some(callback) = guard.as_ref() {
-            callback(event);
+        let callback = {
+            let guard = Self::trace().lock().unwrap_or_else(|p| p.into_inner());
+            guard.as_ref().cloned()
+        }; // lock released here, before the callback is invoked
+        if let Some(cb) = callback {
+            cb(event);
         }
     }
 
@@ -131,6 +134,10 @@ pub trait RegistryApi {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .insert(TypeId::of::<T>(), value);
+
+        self.emit_event(&RegistryEvent::RegisterCompleted {
+            type_name: std::any::type_name::<T>(),
+        });
     }
 
     /// Retrieve a value from the registry.
@@ -182,6 +189,15 @@ pub trait RegistryApi {
     fn get_cloned<T: Send + Sync + Clone + 'static>(&self) -> Result<T, RegistryError> {
         let arc = self.get::<T>()?;
         Ok((*arc).clone())
+    }
+
+    /// Retrieve a value from the registry, returning `None` if not registered.
+    ///
+    /// The primary graceful-degradation path — equivalent to `get::<T>().ok()` but
+    /// matches the language-neutral API surface defined in the JigsawFlow spec.
+    /// Prefer this over `get` when absence is expected and not a programming error.
+    fn try_get<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.get::<T>().ok()
     }
 
     /// Check if a type is registered in the registry.
@@ -486,6 +502,16 @@ mod tests {
 
     #[test]
     #[serial]
+    fn test_try_get() {
+        API.clear();
+        assert!(API.try_get::<u64>().is_none());
+        API.register(99u64);
+        let val = API.try_get::<u64>().expect("should be Some after register");
+        assert_eq!(*val, 99);
+    }
+
+    #[test]
+    #[serial]
     fn test_contains() {
         API.clear();
         assert!(!API.contains::<u32>().unwrap());
@@ -522,8 +548,9 @@ mod tests {
         API.register(5u8);
 
         let captured = events.lock().unwrap();
-        assert_eq!(captured.len(), 1);
+        assert_eq!(captured.len(), 2);
         assert_eq!(captured[0], "register { type_name: u8 }");
+        assert_eq!(captured[1], "register_completed { type_name: u8 }");
 
         API.clear_trace_callback();
     }
@@ -544,9 +571,10 @@ mod tests {
         let _ = API.get::<i32>();
 
         let captured = events.lock().unwrap();
-        assert_eq!(captured.len(), 2);
+        assert_eq!(captured.len(), 3);
         assert_eq!(captured[0], "register { type_name: i32 }");
-        assert_eq!(captured[1], "get { type_name: i32, found: true }");
+        assert_eq!(captured[1], "register_completed { type_name: i32 }");
+        assert_eq!(captured[2], "get { type_name: i32, found: true }");
 
         API.clear_trace_callback();
     }
@@ -568,7 +596,7 @@ mod tests {
         let _ = API.contains::<String>();
 
         let captured = events.lock().unwrap();
-        assert_eq!(captured.len(), 3);
+        assert_eq!(captured.len(), 4);
         assert_eq!(
             captured[0],
             "contains { type_name: alloc::string::String, found: false }"
@@ -576,6 +604,10 @@ mod tests {
         assert_eq!(captured[1], "register { type_name: alloc::string::String }");
         assert_eq!(
             captured[2],
+            "register_completed { type_name: alloc::string::String }"
+        );
+        assert_eq!(
+            captured[3],
             "contains { type_name: alloc::string::String, found: true }"
         );
 
@@ -618,12 +650,15 @@ mod tests {
 
         API.register(10u16);
 
-        // Verify event was captured
-        {
-            let captured = events.lock().unwrap();
-            assert_eq!(captured.len(), 1);
-            assert_eq!(captured[0], "register { type_name: u16 }");
-        }
+        // Extract values before asserting — never hold the events lock during an assert.
+        // If an assert fires with the lock held, the events mutex is poisoned and every
+        // subsequent test that fires a trace event (including API.clear()) will cascade-fail.
+        let count = events.lock().unwrap().len();
+        let e0 = events.lock().unwrap()[0].clone();
+        let e1 = events.lock().unwrap()[1].clone();
+        assert_eq!(count, 2);
+        assert_eq!(e0, "register { type_name: u16 }");
+        assert_eq!(e1, "register_completed { type_name: u16 }");
 
         // Clear the callback
         API.clear_trace_callback();
@@ -634,8 +669,8 @@ mod tests {
         let _ = API.contains::<u16>();
 
         // Verify no new events were captured
-        let captured = events.lock().unwrap();
-        assert_eq!(captured.len(), 1); // Still only the first event
+        let final_count = events.lock().unwrap().len();
+        assert_eq!(final_count, 2); // Still only the first two events
     }
 
     #[test]

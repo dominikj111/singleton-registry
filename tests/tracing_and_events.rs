@@ -24,12 +24,13 @@ fn test_basic_tracing() {
     let _: Arc<i32> = traced1::get().unwrap();
     let _ = traced1::contains::<i32>();
 
-    // Verify events were captured
+    // Verify events were captured (register fires two events: Register + RegisterCompleted)
     let captured = events.lock().unwrap();
-    assert_eq!(captured.len(), 3);
-    assert!(captured[0].contains("register"));
-    assert!(captured[1].contains("get"));
-    assert!(captured[2].contains("contains"));
+    assert_eq!(captured.len(), 4);
+    assert!(captured[0].contains("register {"));
+    assert!(captured[1].contains("register_completed"));
+    assert!(captured[2].contains("get"));
+    assert!(captured[3].contains("contains"));
 }
 
 #[test]
@@ -46,8 +47,9 @@ fn test_trace_register_event() {
     traced2::register(999u32);
 
     let captured = events.lock().unwrap();
-    assert_eq!(captured.len(), 1);
+    assert_eq!(captured.len(), 2);
     assert_eq!(captured[0], "register { type_name: u32 }");
+    assert_eq!(captured[1], "register_completed { type_name: u32 }");
 
     traced2::clear_trace_callback();
 }
@@ -70,10 +72,11 @@ fn test_trace_get_found_and_not_found() {
     // Try to get non-existent type (not found)
     let _: Result<Arc<f32>, _> = traced3::get();
 
+    // register(123i64) → Register + RegisterCompleted (2 events), then get-found, then get-notfound
     let captured = events.lock().unwrap();
-    assert_eq!(captured.len(), 3);
-    assert!(captured[1].contains("found: true"));
-    assert!(captured[2].contains("found: false"));
+    assert_eq!(captured.len(), 4);
+    assert!(captured[2].contains("found: true"));
+    assert!(captured[3].contains("found: false"));
 
     traced3::clear_trace_callback();
 }
@@ -98,12 +101,13 @@ fn test_trace_contains_event() {
     // Check after registering (found)
     let _ = traced4::contains::<String>();
 
+    // contains-false, register, register_completed, contains-true = 4 events
     let captured = events.lock().unwrap();
-    assert_eq!(captured.len(), 3);
+    assert_eq!(captured.len(), 4);
     assert!(captured[0].contains("contains"));
     assert!(captured[0].contains("found: false"));
-    assert!(captured[2].contains("contains"));
-    assert!(captured[2].contains("found: true"));
+    assert!(captured[3].contains("contains"));
+    assert!(captured[3].contains("found: true"));
 
     traced4::clear_trace_callback();
 }
@@ -130,9 +134,9 @@ fn test_clear_trace_callback() {
     traced5::register(2u8);
     let _: Arc<u8> = traced5::get().unwrap();
 
-    // Verify only the first operation was traced
+    // register(1u8) fires Register + RegisterCompleted before callback is cleared
     let captured = events.lock().unwrap();
-    assert_eq!(captured.len(), 1);
+    assert_eq!(captured.len(), 2);
 }
 
 #[test]
@@ -150,7 +154,8 @@ fn test_trace_callback_with_custom_logic() {
 
     traced6::set_trace_callback(move |event| {
         let event_str = format!("{}", event);
-        if event_str.contains("register") {
+        // Use "register {" to distinguish from "register_completed {" — both contain "register"
+        if event_str.contains("register {") {
             *reg_clone.lock().unwrap() += 1;
         } else if event_str.contains("get") {
             *get_clone.lock().unwrap() += 1;
@@ -166,7 +171,7 @@ fn test_trace_callback_with_custom_logic() {
     let _: Arc<i16> = traced6::get().unwrap();
     let _ = traced6::contains::<i16>();
 
-    // Verify counts
+    // Verify counts (register_completed events are filtered out by "register {" prefix check)
     assert_eq!(*register_count.lock().unwrap(), 2);
     assert_eq!(*get_count.lock().unwrap(), 2);
     assert_eq!(*contains_count.lock().unwrap(), 1);
@@ -198,9 +203,9 @@ fn test_trace_callback_replacement() {
 
     traced7::register(200usize);
 
-    // First callback should have 1 event, second should have 1 event
-    assert_eq!(events1.lock().unwrap().len(), 1);
-    assert_eq!(events2.lock().unwrap().len(), 1);
+    // Each register fires Register + RegisterCompleted = 2 events per callback
+    assert_eq!(events1.lock().unwrap().len(), 2);
+    assert_eq!(events2.lock().unwrap().len(), 2);
 
     traced7::clear_trace_callback();
 }

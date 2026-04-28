@@ -95,6 +95,12 @@ macro_rules! define_registry {
                 API.get_cloned()
             }
 
+            /// Retrieve a value from the registry, returning None if not registered.
+            pub fn try_get<T: Send + Sync + 'static>() -> Option<Arc<T>> {
+                use $crate::RegistryApi;
+                API.try_get()
+            }
+
             /// Check if a type is registered in the registry.
             pub fn contains<T: Send + Sync + 'static>() -> Result<bool, $crate::RegistryError> {
                 use $crate::RegistryApi;
@@ -176,10 +182,11 @@ mod tests {
         let _ = trace_test::contains::<i32>();
 
         let recorded = events.lock().unwrap();
-        assert_eq!(recorded.len(), 3);
+        assert_eq!(recorded.len(), 4);
         assert!(recorded[0].contains("register"));
-        assert!(recorded[1].contains("get"));
-        assert!(recorded[2].contains("contains"));
+        assert!(recorded[1].contains("register_completed"));
+        assert!(recorded[2].contains("get"));
+        assert!(recorded[3].contains("contains"));
     }
 
     #[test]
@@ -197,5 +204,15 @@ mod tests {
         // Test clear_trace_callback
         extra_test::set_trace_callback(|_| {});
         extra_test::clear_trace_callback(); // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_try_get() {
+        define_registry!(try_get_test);
+
+        assert!(try_get_test::try_get::<i32>().is_none());
+        try_get_test::register(77i32);
+        let val = try_get_test::try_get::<i32>().expect("should be Some after register");
+        assert_eq!(*val, 77);
     }
 }

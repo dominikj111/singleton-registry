@@ -3,6 +3,11 @@
 /// These events are passed to the tracing callback set via `set_trace_callback`.
 /// The `Clone` derive allows callbacks to store or forward events if needed.
 ///
+/// For `register`, two events are emitted per call: `Register` fires before the
+/// value is stored (so a panic during storage is visible in the log), and
+/// `RegisterCompleted` fires after the value is successfully stored. If only
+/// `Register` appears without a following `RegisterCompleted`, the store panicked.
+///
 /// # Examples
 ///
 /// ```rust
@@ -13,9 +18,16 @@
 /// ```
 #[derive(Debug, Clone)]
 pub enum RegistryEvent {
-    /// A value was registered in the registry.
+    /// A register call was received. Fires before the value is stored.
+    /// Followed by `RegisterCompleted` on success.
     Register {
-        /// The type name of the registered value (e.g., "i32", "alloc::string::String")
+        /// The type name of the value being registered (e.g., "i32", "alloc::string::String")
+        type_name: &'static str,
+    },
+
+    /// A value was successfully stored in the registry. Fires after the insert.
+    RegisterCompleted {
+        /// The type name of the value that was stored
         type_name: &'static str,
     },
 
@@ -45,6 +57,9 @@ impl std::fmt::Display for RegistryEvent {
             RegistryEvent::Register { type_name } => {
                 write!(f, "register {{ type_name: {} }}", type_name)
             }
+            RegistryEvent::RegisterCompleted { type_name } => {
+                write!(f, "register_completed {{ type_name: {} }}", type_name)
+            }
             RegistryEvent::Get { type_name, found } => {
                 write!(f, "get {{ type_name: {}, found: {} }}", type_name, found)
             }
@@ -68,6 +83,12 @@ mod tests {
     fn test_display_register() {
         let ev = RegistryEvent::Register { type_name: "i32" };
         assert_eq!(ev.to_string(), "register { type_name: i32 }");
+    }
+
+    #[test]
+    fn test_display_register_completed() {
+        let ev = RegistryEvent::RegisterCompleted { type_name: "i32" };
+        assert_eq!(ev.to_string(), "register_completed { type_name: i32 }");
     }
 
     #[test]

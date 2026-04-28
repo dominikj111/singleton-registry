@@ -146,8 +146,11 @@ fn test_registry_with_tracing_isolation() {
     traced_a::register(1i32);
     traced_b::register(2i32);
 
-    // Only traced_a should have events
-    let captured = events.lock().unwrap();
-    assert_eq!(captured.len(), 1);
-    assert!(captured[0].contains("register"));
+    // Only traced_a should have events (Register + RegisterCompleted = 2)
+    let count = events.lock().unwrap().len();
+    let e0 = events.lock().unwrap()[0].clone();
+    let e1 = events.lock().unwrap()[1].clone();
+    assert_eq!(count, 2);
+    assert!(e0.contains("register"));
+    assert!(e1.contains("register_completed"));
 }

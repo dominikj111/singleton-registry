@@ -129,12 +129,12 @@ fn test_with_tracing() {
     });
 
     // Perform operations that trigger events
-    MY_REGISTRY.register(777i32); // +1 event
+    MY_REGISTRY.register(777i32); // +2 events (Register + RegisterCompleted)
     let _: Arc<i32> = MY_REGISTRY.get().unwrap(); // +1 event
     MY_REGISTRY.contains::<i32>().unwrap(); // +1 event
 
     // Verify events were traced
-    assert_eq!(event_count.load(Ordering::SeqCst), 3);
+    assert_eq!(event_count.load(Ordering::SeqCst), 4);
 
     // Clean up trace callback
     MY_REGISTRY.clear_trace_callback();
