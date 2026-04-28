@@ -33,7 +33,9 @@ singleton-registry = "2.1.1"
 
 ## Design Philosophy
 
-This crate implements a **contract-based service locator** pattern:
+This crate implements a **service locator** pattern in the sense Martin Fowler defined in his 2004 article [_Inversion of Control Containers and the Dependency Injection Pattern_](https://martinfowler.com/articles/injection.html#UsingAServiceLocator) — extended with explicit contracts as Rust traits.
+
+Fowler's known trade-off applies: every caller has a dependency on the locator itself, and the dependencies of a component are not visible from its signature. This crate accepts that trade-off deliberately — the benefit is that a component can ask for a capability that may not exist yet and degrade gracefully (via `try_get`) rather than failing at construction time.
 
 ### Contracts as Traits
 
@@ -236,6 +238,10 @@ cargo run --example trait_contracts
 # Singleton replacement: Arc reference safety during runtime swaps
 cargo run --example singleton_replacement
 ```
+
+## JigsawFlow
+
+This crate is the core building block of the [JigsawFlow Microkernel](https://github.com/dominikj111/JigsawFlow) pattern — a capability-driven architecture for offline-first, hot-swappable, language-agnostic applications. The registry is what makes the pattern possible: everything else in JigsawFlow is built on top of it. It is fully usable standalone.
 
 ## Porting to Other Languages
 
