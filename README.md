@@ -1,10 +1,24 @@
 # singleton-registry
 
+[![crates.io](https://img.shields.io/crates/v/singleton-registry.svg)](https://crates.io/crates/singleton-registry)
+[![docs.rs](https://docs.rs/singleton-registry/badge.svg)](https://docs.rs/singleton-registry)
+[![license](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+[![MSRV](https://img.shields.io/badge/rustc-1.80%2B-orange.svg)](https://blog.rust-lang.org/2024/07/25/Rust-1.80.0.html)
+[![dependencies](https://deps.rs/repo/github/dominikj111/singleton-registry/status.svg)](https://deps.rs/repo/github/dominikj111/singleton-registry)
+[![status](https://img.shields.io/badge/status-stable-brightgreen.svg)](CHANGELOG.md)
+
 A **thread-safe singleton registry** for Rust.  
 Create isolated registries for storing and retrieving any type.  
 Each type can have only **one instance** per registry.
 
-> **⚠️ Breaking Change in v2.0**: This version uses a macro-based API. If you're upgrading from v1.x, you'll need to use `define_registry!` to create registries instead of using global functions. See the Quick Start below for the new API.
+## Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+singleton-registry = "2.1"
+```
 
 ## Features & Design
 
@@ -139,6 +153,7 @@ Each registry created with `define_registry!(name)` provides:
 - `name::register(value)` - Register a value
 - `name::register_arc(arc_value)` - Register an Arc-wrapped value
 - `name::get::<T>()` - Retrieve a value as `Arc<T>` (returns `Result`)
+- `name::try_get::<T>()` - Retrieve a value as `Option<Arc<T>>` (returns `None` instead of `Err`)
 - `name::get_cloned::<T>()` - Retrieve a cloned value (requires `Clone`, returns `Result`)
 - `name::contains::<T>()` - Check if a type is registered (returns `Result`)
 - `name::set_trace_callback(callback)` - Set up tracing
@@ -194,13 +209,6 @@ fn get_config() -> Result<std::sync::Arc<String>, singleton_registry::RegistryEr
 
 ## Roadmap
 
-### v2.1.0 (Planned)
-
-- **`try_register()`** - Explicit error handling for registration operations
-- **Enhanced documentation** - Add "Limitations" section and comparison with alternatives
-- **Benchmarks** - Document performance characteristics
-- **Lock poisoning tests** - Verify recovery behavior under stress
-
 ### Future Considerations
 
 - `get_or_default()` - Convenience method with fallback values
@@ -210,7 +218,7 @@ fn get_config() -> Result<std::sync::Arc<String>, singleton_registry::RegistryEr
 ### Non-Goals
 
 - Async support (keeping it synchronous by design)
-- Removal operations (override-only by design)
+- Removal operations — override with a null object (a no-op implementation satisfying the same trait contract) to safely "disable" a registered value without risking a missing-type panic at call sites
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
@@ -231,16 +239,7 @@ cargo run --example singleton_replacement
 
 ## Porting to Other Languages
 
-If you want to implement a similar registry in TypeScript, C++, or another language, see [PORTING.md](PORTING.md) for design decisions and implementation guidance.
-
-## Installation
-
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-singleton-registry = "2.0"
-```
+For implementing a similar registry in TypeScript, C++, or another language, porting guidance has been consolidated into the [JigsawFlow PLAN.md](https://github.com/dominikj111/JigsawFlow/blob/main/PLAN.md) (Sections 2 and 11) — covering language-agnostic API surface, token design, thread safety, and reference counting across all ports.
 
 ## License
 
