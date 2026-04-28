@@ -118,7 +118,10 @@ fn process_order(order_id: u32) {
     logger.log("Validating payment...");
     logger.log("Order confirmed!");
 
-    notifier.notify("customer@example.com", &format!("Order #{} confirmed!", order_id));
+    notifier.notify(
+        "customer@example.com",
+        &format!("Order #{} confirmed!", order_id),
+    );
 }
 
 fn main() {

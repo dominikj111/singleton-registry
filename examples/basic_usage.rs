@@ -64,10 +64,22 @@ fn main() {
     // -------------------------------------------------------------------------
     println!("\n4. Checking registration status with contains()...");
 
-    println!("   contains::<i32>()       = {}", app::contains::<i32>().unwrap());
-    println!("   contains::<String>()    = {}", app::contains::<String>().unwrap());
-    println!("   contains::<AppConfig>() = {}", app::contains::<AppConfig>().unwrap());
-    println!("   contains::<Vec<u8>>()   = {}", app::contains::<Vec<u8>>().unwrap()); // Not registered
+    println!(
+        "   contains::<i32>()       = {}",
+        app::contains::<i32>().unwrap()
+    );
+    println!(
+        "   contains::<String>()    = {}",
+        app::contains::<String>().unwrap()
+    );
+    println!(
+        "   contains::<AppConfig>() = {}",
+        app::contains::<AppConfig>().unwrap()
+    );
+    println!(
+        "   contains::<Vec<u8>>()   = {}",
+        app::contains::<Vec<u8>>().unwrap()
+    ); // Not registered
 
     // -------------------------------------------------------------------------
     // 5. Retrieve values with get() - returns Arc<T>
