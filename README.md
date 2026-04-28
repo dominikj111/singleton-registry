@@ -17,7 +17,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-singleton-registry = "2.1.1"
+singleton-registry = "2.1.2"
 ```
 
 ## Features & Design

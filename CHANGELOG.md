@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-04-28
+
+### Changed
+
+- README: acknowledge Fowler's service locator trade-off (hidden dependencies vs. graceful degradation) and tie it explicitly to `try_get`
+- README: add JigsawFlow section linking to the project and clarifying this crate is its core building block, usable standalone
+
 ## [2.1.1] - 2026-04-28
 
 ### Changed
@@ -142,7 +149,8 @@ let value: Arc<i32> = app::get().unwrap();
 - Complete test coverage
 - MIT license
 
-[Unreleased]: https://github.com/dominikj111/singleton-registry/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/dominikj111/singleton-registry/compare/v2.1.2...HEAD
+[2.1.2]: https://github.com/dominikj111/singleton-registry/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/dominikj111/singleton-registry/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/dominikj111/singleton-registry/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/dominikj111/singleton-registry/compare/v1.0.1...v2.0.0
