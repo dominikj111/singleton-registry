@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-04-28
+
+### Changed
+
+- README refreshed: badges added (crates.io, docs.rs, license, MSRV, deps.rs, status), `try_get` documented in API reference, Installation section moved to top, stale v2.0 migration warning and duplicate Installation entry removed, Porting section updated to point to JigsawFlow PLAN.md
+- `RELEASING.md` added with step-by-step publish checklist
+
 ## [2.1.0] - 2026-04-28
 
 ### Added
@@ -135,7 +142,9 @@ let value: Arc<i32> = app::get().unwrap();
 - Complete test coverage
 - MIT license
 
-[Unreleased]: https://github.com/dominikj111/singleton-registry/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/dominikj111/singleton-registry/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/dominikj111/singleton-registry/compare/v2.1.0...v2.1.1
+[2.1.0]: https://github.com/dominikj111/singleton-registry/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/dominikj111/singleton-registry/compare/v1.0.1...v2.0.0
 [1.0.1]: https://github.com/dominikj111/singleton-registry/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/dominikj111/singleton-registry/releases/tag/v1.0.0

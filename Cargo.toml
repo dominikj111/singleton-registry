@@ -1,6 +1,6 @@
 [package]
 name = "singleton-registry"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2021"
 authors = ["Dominik Jelinek <dominik.jelinek111@gmail.com>"]
 description = "Thread-safe singleton registry for Rust with isolated, per-type storage — powers the JigsawFlow microkernel pattern"
